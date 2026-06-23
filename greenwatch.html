@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GreenWatch IoT Dashboard</title>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+*{margin:0;padding:0;box-sizing:border-box;}
+
+body {
+  min-height: 100vh;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: #060612;
+  color: #fff;
+  overflow-x: hidden;
+}
+
+canvas#bg { position:fixed; inset:0; width:100%; height:100%; z-index:0; }
+
+.page {
+  position: relative;
+  z-index: 1;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 52px 28px 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* HEADER */
+.header { text-align:center; margin-bottom:8px; }
+
+.status-pill {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: rgba(48,209,88,.1);
+  border: 1px solid rgba(48,209,88,.3);
+  border-radius: 50px;
+  padding: 5px 14px 5px 9px;
+  margin-bottom: 18px;
+}
+.status-pill .dot {
+  width:7px; height:7px; border-radius:50%;
+  background: #30d158;
+  box-shadow: 0 0 10px rgba(48,209,88,.9);
+  animation: blink 2s ease-in-out infinite;
+}
+.status-pill span { font-size:11px; font-weight:600; color:rgba(48,209,88,.85); letter-spacing:.08em; text-transform:uppercase; }
+@keyframes blink { 0%,100%{opacity:1;} 50%{opacity:.4;} }
+
+.header h1 {
+  font-size: 36px; font-weight: 800; letter-spacing: -1px; line-height: 1.1;
+  background: linear-gradient(135deg, #fff 30%, rgba(255,255,255,.45));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.header p { font-size:14px; color:rgba(255,255,255,.35); margin-top:8px; }
+
+/* ── TOP SUMMARY STRIP ── */
+.summary-strip {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 12px;
+}
+.sum-card {
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.1);
+  border-top-color: rgba(255,255,255,.18);
+  backdrop-filter: blur(30px);
+  -webkit-backdrop-filter: blur(30px);
+  border-radius: 18px;
+  padding: 14px 16px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.sum-label { font-size: 10px; font-weight: 600; color: rgba(255,255,255,.35); text-transform: uppercase; letter-spacing: .07em; }
+.sum-val { font-size: 19px; font-weight: 700; letter-spacing: -.5px; font-variant-numeric: tabular-nums; }
+.sum-sub { font-size: 10px; color: rgba(255,255,255,.28); }
+
+/* ── MAIN LAYOUT ── */
+.main-grid {
+  display: grid;
+  grid-template-columns: 1fr 420px;
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 980px) {
+  .main-grid { grid-template-columns: 1fr; }
+}
+
+.col { display:flex; flex-direction:column; gap:18px; }
+
+/* ── GLASS BASE ── */
+.gcard {
+  background: rgba(255,255,255,.055);
+  border: 1px solid rgba(255,255,255,.12);
+  border-top-color: rgba(255,255,255,.22);
+  border-radius: 28px;
+  backdrop-filter: blur(48px) saturate(200%);
+  -webkit-backdrop-filter: blur(48px) saturate(200%);
+  position: relative;
+  overflow: hidden;
+  transition: transform .35s cubic-bezier(.34,1.56,.64,1), border-color .3s;
+  padding: 24px 26px 22px;
+}
+.gcard:hover { transform: translateY(-3px); border-color:rgba(255,255,255,.2); }
+
+.gcard::before {
+  content:'';
+  position:absolute; top:0; left:12%; right:12%; height:1px;
+  background:linear-gradient(90deg, transparent, rgba(255,255,255,.55), transparent);
+}
+.gcard::after {
+  content:''; position:absolute; width:200px; height:200px; border-radius:50%;
+  filter:blur(50px); opacity:.1; pointer-events:none; top:-40px; right:-40px;
+}
+.ct::after  { background:#ff9f0a; }
+.ch::after  { background:#30d158; top:-40px; left:-40px; right:auto; }
+.caq::after { background:#bf5af2; }
+.cp::after  { background:#5e9eff; top:-40px; left:-40px; right:auto; }
+.ca::after  { background:#64d2ff; }
+.ci::after  { background:#0a84ff; }
+.cs::after  { background:#30d158; top:-40px; left:-40px; right:auto; }
+.cg::after  { background:#7f77dd; }
+
+.crow { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+
+.clabel {
+  font-size:11px; font-weight:600; letter-spacing:.1em; text-transform:uppercase;
+  color:rgba(255,255,255,.38); margin-bottom:6px;
+}
+
+.cicon {
+  width:48px; height:48px; border-radius:15px;
+  display:flex; align-items:center; justify-content:center;
+  font-size:22px; flex-shrink:0; position:relative;
+}
+.cicon::before { content:''; position:absolute; inset:0; border-radius:15px; border:1px solid rgba(255,255,255,.12); }
+.it  { background: rgba(255,159,10,.18); box-shadow: inset 0 1px 0 rgba(255,200,80,.25), 0 0 24px rgba(255,159,10,.15); }
+.ih  { background: rgba(48,209,88,.15);  box-shadow: inset 0 1px 0 rgba(100,255,150,.2), 0 0 24px rgba(48,209,88,.12); }
+.iaq { background: rgba(191,90,242,.18); box-shadow: inset 0 1px 0 rgba(220,150,255,.25), 0 0 24px rgba(191,90,242,.15); }
+.ip  { background: rgba(94,158,255,.18); box-shadow: inset 0 1px 0 rgba(150,190,255,.25), 0 0 24px rgba(94,158,255,.15); }
+.ia  { background: rgba(100,210,255,.18);box-shadow: inset 0 1px 0 rgba(160,225,255,.25), 0 0 24px rgba(100,210,255,.15); }
+.ii  { background: rgba(10,132,255,.18); box-shadow: inset 0 1px 0 rgba(80,160,255,.25), 0 0 24px rgba(10,132,255,.15); }
+.is  { background: rgba(48,209,88,.15);  box-shadow: inset 0 1px 0 rgba(100,255,150,.2), 0 0 24px rgba(48,209,88,.12); }
+.ig  { background: rgba(127,119,221,.18); box-shadow: inset 0 1px 0 rgba(180,170,255,.25), 0 0 24px rgba(127,119,221,.15); }
+
+.cval {
+  font-size:48px; font-weight:800; letter-spacing:-2.5px; line-height:1;
+  font-variant-numeric:tabular-nums;
+}
+.vt  { color:#ff9f0a; text-shadow: 0 0 40px rgba(255,159,10,.4); }
+.vh  { color:#30d158; text-shadow: 0 0 40px rgba(48,209,88,.4); }
+.vaq { color:#bf5af2; text-shadow: 0 0 40px rgba(191,90,242,.4); }
+.vp  { color:#5e9eff; text-shadow: 0 0 40px rgba(94,158,255,.4); }
+.va  { color:#64d2ff; text-shadow: 0 0 40px rgba(100,210,255,.4); }
+.vi  { color:#0a84ff; text-shadow: 0 0 40px rgba(10,132,255,.4); }
+
+.cunit { font-size:18px; font-weight:400; opacity:.5; margin-left:2px; }
+
+/* ARC GAUGE */
+.gauge-wrap { display:flex; justify-content:center; margin:10px 0 6px; }
+.gauge-svg { overflow:visible; }
+
+/* HORIZONTAL METER */
+.meter-row { display:flex; align-items:center; gap:10px; margin-top:16px; }
+.meter-track { flex:1; height:5px; background:rgba(255,255,255,.08); border-radius:10px; overflow:hidden; position:relative; }
+.meter-fill { height:100%; border-radius:10px; transition: width 1.2s cubic-bezier(.4,0,.2,1); width:0%; }
+.mft  { background:linear-gradient(90deg,#ff6b00,#ff9f0a); box-shadow:0 0 10px rgba(255,159,10,.5); }
+.mfh  { background:linear-gradient(90deg,#00a832,#30d158); box-shadow:0 0 10px rgba(48,209,88,.5); }
+.mfp  { background:linear-gradient(90deg,#2563eb,#5e9eff); box-shadow:0 0 10px rgba(94,158,255,.5); }
+.meter-pct { font-size:11px; font-weight:600; color:rgba(255,255,255,.35); min-width:32px; text-align:right; }
+
+/* SPARKLINE */
+.spark-wrap { margin-top:12px; }
+.spark-label-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; }
+.spark-label { font-size:10px; color:rgba(255,255,255,.28); letter-spacing:.06em; text-transform:uppercase; }
+.spark-svg { width:100%; display:block; }
+
+/* ── BIG COMBINED TREND CHART ── */
+.chart-card { padding: 24px 28px 20px; }
+.chart-head { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom: 6px; }
+.chart-title { font-size:15px; font-weight:600; color:rgba(255,255,255,.85); }
+.chart-sub { font-size:11px; color:rgba(255,255,255,.32); margin-top:3px; }
+.legend { display:flex; gap:14px; flex-wrap:wrap; }
+.legend-item { display:flex; align-items:center; gap:6px; font-size:11px; color:rgba(255,255,255,.5); }
+.legend-dot { width:8px; height:8px; border-radius:50%; }
+.chart-svg-wrap { margin-top: 14px; }
+.chart-svg { width:100%; display:block; }
+.chart-foot { display:flex; justify-content:space-between; margin-top:8px; }
+.chart-foot span { font-size:10px; color:rgba(255,255,255,.22); }
+
+/* ── RADIAL OVERVIEW ROW ── */
+.radial-row { display:grid; grid-template-columns: repeat(3, 1fr); gap:14px; }
+.radial-item { display:flex; flex-direction:column; align-items:center; gap:8px; }
+.radial-svg { overflow:visible; }
+.radial-val { font-size:13px; font-weight:700; }
+.radial-name { font-size:10px; color:rgba(255,255,255,.32); text-transform:uppercase; letter-spacing:.06em; }
+
+/* CENTERED STATE CARDS (IR, AQ, SYSTEM) */
+.center-state { display:flex; flex-direction:column; align-items:center; padding:6px 0 2px; gap:12px; }
+.state-ring {
+  width:88px; height:88px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  position:relative; font-size:32px; transition:all .5s ease;
+}
+.state-ring::before, .state-ring::after {
+  content:''; position:absolute; inset:-8px; border-radius:50%;
+  border:1px solid; animation: ripple 2.5s ease-out infinite; opacity:0;
+}
+.state-ring::after { animation-delay:1.2s; }
+
+.ir-detected .state-ring { background:rgba(10,132,255,.2); box-shadow:0 0 60px rgba(10,132,255,.35); }
+.ir-detected .state-ring::before, .ir-detected .state-ring::after { border-color:rgba(10,132,255,.6); }
+.ir-clear .state-ring { background:rgba(255,255,255,.06); box-shadow:none; }
+.ir-clear .state-ring::before, .ir-clear .state-ring::after { display:none; }
+
+.aq-good .state-ring   { background:rgba(48,209,88,.18); box-shadow:0 0 60px rgba(48,209,88,.3); }
+.aq-good .state-ring::before, .aq-good .state-ring::after { border-color:rgba(48,209,88,.5); }
+.aq-medium .state-ring { background:rgba(250,204,21,.18); box-shadow:0 0 60px rgba(250,204,21,.3); }
+.aq-medium .state-ring::before, .aq-medium .state-ring::after { border-color:rgba(250,204,21,.5); }
+.aq-poor .state-ring   { background:rgba(239,68,68,.18); box-shadow:0 0 60px rgba(239,68,68,.3); }
+.aq-poor .state-ring::before, .aq-poor .state-ring::after { border-color:rgba(239,68,68,.5); }
+
+.sys-online .state-ring { background:rgba(48,209,88,.18); box-shadow:0 0 60px rgba(48,209,88,.3); }
+.sys-online .state-ring::before, .sys-online .state-ring::after { border-color:rgba(48,209,88,.5); }
+
+@keyframes ripple { 0%{transform:scale(1); opacity:.7;} 100%{transform:scale(1.6); opacity:0;} }
+
+.state-badge {
+  display:inline-flex; align-items:center; gap:8px;
+  padding:8px 18px; border-radius:50px;
+  font-size:14px; font-weight:700; letter-spacing:-.2px;
+  transition:all .4s ease;
+}
+.badge-dot { width:8px; height:8px; border-radius:50%; transition:all .4s; }
+
+.ir-detected .state-badge { background:rgba(10,132,255,.2); border:1px solid rgba(10,132,255,.45); color:#58b1ff; }
+.ir-detected .badge-dot { background:#0a84ff; box-shadow:0 0 10px rgba(10,132,255,.9); animation:blink 1.4s ease-in-out infinite; }
+.ir-clear .state-badge { background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1); color:rgba(255,255,255,.35); }
+.ir-clear .badge-dot { background:rgba(255,255,255,.25); }
+
+.aq-good .state-badge   { background:rgba(48,209,88,.18); border:1px solid rgba(48,209,88,.36); color:#4fdc7e; }
+.aq-good .badge-dot     { background:#30d158; box-shadow:0 0 10px rgba(48,209,88,.9); }
+.aq-medium .state-badge { background:rgba(250,204,21,.18); border:1px solid rgba(250,204,21,.36); color:#f5d142; }
+.aq-medium .badge-dot   { background:#facc15; box-shadow:0 0 10px rgba(250,204,21,.9); }
+.aq-poor .state-badge   { background:rgba(239,68,68,.18); border:1px solid rgba(239,68,68,.36); color:#ff6b6b; }
+.aq-poor .badge-dot     { background:#ef4444; box-shadow:0 0 10px rgba(239,68,68,.9); }
+
+.sys-online .state-badge { background:rgba(48,209,88,.18); border:1px solid rgba(48,209,88,.36); color:#4fdc7e; }
+.sys-online .badge-dot   { background:#30d158; box-shadow:0 0 10px rgba(48,209,88,.9); animation:blink 2s ease-in-out infinite; }
+
+.state-sub { font-size:12px; color:rgba(255,255,255,.28); text-align:center; }
+
+/* TIMEBAR / DOT TRAIL */
+.timebar { display:flex; align-items:center; justify-content:space-between; margin-top:14px; }
+.timebar-label { font-size:10px; color:rgba(255,255,255,.25); letter-spacing:.04em; }
+.timebar-dots { display:flex; gap:4px; }
+.timebar-dots span { width:5px; height:5px; border-radius:50%; background:rgba(255,255,255,.12); transition: background .4s; }
+
+/* IR + AQ + SYS row */
+.triple-row { display:grid; grid-template-columns: repeat(3, 1fr); gap:18px; }
+
+/* LOADING */
+@keyframes shimmer { 0%{background-position:-300px 0;} 100%{background-position:300px 0;} }
+.loading {
+  background: linear-gradient(90deg, rgba(255,255,255,.04) 0%, rgba(255,255,255,.1) 50%, rgba(255,255,255,.04) 100%);
+  background-size: 600px 100%;
+  animation: shimmer 1.6s infinite;
+  border-radius:8px; color:transparent !important;
+  display:inline-block; min-width:70px; text-shadow:none !important;
+}
+
+/* FOOTER */
+.footer { text-align:center; margin-top:4px; }
+.footer-bar {
+  display:inline-flex; align-items:center; gap:8px;
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.1);
+  border-top-color: rgba(255,255,255,.18);
+  backdrop-filter: blur(30px);
+  -webkit-backdrop-filter: blur(30px);
+  border-radius: 50px;
+  padding: 9px 18px;
+  font-size: 11px;
+  color: rgba(255,255,255,.35);
+}
+
+@media (max-width: 700px) {
+  .summary-strip { grid-template-columns: repeat(2, 1fr); }
+  .triple-row { grid-template-columns: 1fr; }
+  .radial-row { grid-template-columns: repeat(3, 1fr); }
+}
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+
+<div class="page">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="status-pill">
+      <div class="dot"></div>
+      <span>Live Feed</span>
+    </div>
+    <h1>GreenWatch IoT Monitor</h1>
+    <p>ESP32 sensor array · Real-time data</p>
+  </div>
+
+  <!-- SUMMARY STRIP -->
+  <div class="summary-strip">
+    <div class="sum-card">
+      <div class="sum-label">Temp</div>
+      <div class="sum-val" id="sum-temp" style="color:#ff9f0a;"><span class="loading">--</span></div>
+      <div class="sum-sub">current</div>
+    </div>
+    <div class="sum-card">
+      <div class="sum-label">Humidity</div>
+      <div class="sum-val" id="sum-hum" style="color:#30d158;"><span class="loading">--</span></div>
+      <div class="sum-sub">current</div>
+    </div>
+    <div class="sum-card">
+      <div class="sum-label">Pressure</div>
+      <div class="sum-val" id="sum-pres" style="color:#5e9eff;"><span class="loading">--</span></div>
+      <div class="sum-sub">hPa</div>
+    </div>
+    <div class="sum-card">
+      <div class="sum-label">Altitude</div>
+      <div class="sum-val" id="sum-alt" style="color:#64d2ff;"><span class="loading">--</span></div>
+      <div class="sum-sub">meters</div>
+    </div>
+    <div class="sum-card">
+      <div class="sum-label">Air quality</div>
+      <div class="sum-val" id="sum-aq" style="color:#bf5af2;"><span class="loading">--</span></div>
+      <div class="sum-sub" id="sum-aq-sub">index</div>
+    </div>
+    <div class="sum-card">
+      <div class="sum-label">Uptime</div>
+      <div class="sum-val" id="sum-uptime" style="color:#4fdc7e;">00:00</div>
+      <div class="sum-sub">since load</div>
+    </div>
+  </div>
+
+  <!-- MAIN GRID -->
+  <div class="main-grid">
+
+    <!-- LEFT COLUMN: chart + radial overview + triple row -->
+    <div class="col">
+
+      <!-- COMBINED TREND CHART -->
+      <div class="gcard cg chart-card">
+        <div class="chart-head">
+          <div>
+            <div class="chart-title">Sensor trends</div>
+            <div class="chart-sub">Live readings over the last 20 samples</div>
+          </div>
+          <div class="legend">
+            <div class="legend-item"><div class="legend-dot" style="background:#ff9f0a;"></div>Temp °C</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#30d158;"></div>Humidity %</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#5e9eff;"></div>Pressure</div>
+          </div>
+        </div>
+        <div class="chart-svg-wrap">
+          <svg class="chart-svg" id="trend-svg" viewBox="0 0 860 280" height="280" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="gradTemp" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="rgba(255,159,10,.28)"/>
+                <stop offset="100%" stop-color="rgba(255,159,10,0)"/>
+              </linearGradient>
+              <linearGradient id="gradHum" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="rgba(48,209,88,.22)"/>
+                <stop offset="100%" stop-color="rgba(48,209,88,0)"/>
+              </linearGradient>
+            </defs>
+            <g id="gridlines"></g>
+            <path id="area-temp" d="" fill="url(#gradTemp)"/>
+            <path id="area-hum" d="" fill="url(#gradHum)"/>
+            <path id="line-pres" d="" fill="none" stroke="#5e9eff" stroke-width="2" stroke-dasharray="5,5" stroke-linecap="round" opacity="0.7"/>
+            <path id="line-hum" d="" fill="none" stroke="#30d158" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path id="line-temp" d="" fill="none" stroke="#ff9f0a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="chart-foot">
+          <span id="chart-foot-left">Waiting for data…</span>
+          <span id="chart-foot-right">now</span>
+        </div>
+      </div>
+
+      <!-- RADIAL OVERVIEW -->
+      <div class="gcard cg" style="padding: 22px 26px 20px;">
+        <div class="clabel" style="margin-bottom:16px;">Range overview</div>
+        <div class="radial-row" id="radial-row">
+          <div class="radial-item">
+            <svg class="radial-svg" width="84" height="84" viewBox="0 0 84 84">
+              <circle cx="42" cy="42" r="34" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="7"/>
+              <circle id="rad-temp" cx="42" cy="42" r="34" fill="none" stroke="#ff9f0a" stroke-width="7" stroke-linecap="round" stroke-dasharray="213.5" stroke-dashoffset="213.5" transform="rotate(-90 42 42)" style="transition:stroke-dashoffset 1s ease;"/>
+              <text x="42" y="47" text-anchor="middle" fill="#ff9f0a" font-size="15" font-weight="700" font-family="Inter" id="rad-temp-text">--</text>
+            </svg>
+            <div class="radial-name">Temperature</div>
+          </div>
+          <div class="radial-item">
+            <svg class="radial-svg" width="84" height="84" viewBox="0 0 84 84">
+              <circle cx="42" cy="42" r="34" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="7"/>
+              <circle id="rad-hum" cx="42" cy="42" r="34" fill="none" stroke="#30d158" stroke-width="7" stroke-linecap="round" stroke-dasharray="213.5" stroke-dashoffset="213.5" transform="rotate(-90 42 42)" style="transition:stroke-dashoffset 1s ease;"/>
+              <text x="42" y="47" text-anchor="middle" fill="#30d158" font-size="15" font-weight="700" font-family="Inter" id="rad-hum-text">--</text>
+            </svg>
+            <div class="radial-name">Humidity</div>
+          </div>
+          <div class="radial-item">
+            <svg class="radial-svg" width="84" height="84" viewBox="0 0 84 84">
+              <circle cx="42" cy="42" r="34" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="7"/>
+              <circle id="rad-pres" cx="42" cy="42" r="34" fill="none" stroke="#5e9eff" stroke-width="7" stroke-linecap="round" stroke-dasharray="213.5" stroke-dashoffset="213.5" transform="rotate(-90 42 42)" style="transition:stroke-dashoffset 1s ease;"/>
+              <text x="42" y="47" text-anchor="middle" fill="#5e9eff" font-size="14" font-weight="700" font-family="Inter" id="rad-pres-text">--</text>
+            </svg>
+            <div class="radial-name">Pressure</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TRIPLE ROW: IR / AQ / SYSTEM -->
+      <div class="triple-row">
+        <div class="gcard ci">
+          <div class="crow">
+            <div><div class="clabel">Object detection</div></div>
+            <div class="cicon ii">👁️</div>
+          </div>
+          <div class="center-state ir-clear" id="ir-state">
+            <div class="state-ring" id="ir-ring">👁️</div>
+            <div class="state-badge">
+              <span class="badge-dot"></span>
+              <span id="ir">Waiting…</span>
+            </div>
+            <div class="state-sub" id="ir-sub">Sensor initializing</div>
+          </div>
+        </div>
+
+        <div class="gcard caq">
+          <div class="crow">
+            <div><div class="clabel">Air quality</div></div>
+            <div class="cicon iaq">🌫️</div>
+          </div>
+          <div class="center-state aq-good" id="aq-state">
+            <div class="cval vaq" style="font-size:34px; text-shadow:none;"><span id="aq" class="loading">--</span></div>
+            <div class="state-badge">
+              <span class="badge-dot"></span>
+              <span id="aq-status-text">Waiting…</span>
+            </div>
+            <div class="state-sub" id="aq-sub">Sensor initializing</div>
+          </div>
+        </div>
+
+        <div class="gcard cs">
+          <div class="crow">
+            <div><div class="clabel">System status</div></div>
+            <div class="cicon is">📡</div>
+          </div>
+          <div class="center-state sys-online">
+            <div class="state-ring">📡</div>
+            <div class="state-badge">
+              <span class="badge-dot"></span>
+              <span>ONLINE</span>
+            </div>
+            <div class="state-sub">ESP32 · Firebase RTDB</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT COLUMN: detailed cards -->
+    <div class="col">
+
+      <!-- TEMPERATURE -->
+      <div class="gcard ct">
+        <div class="crow">
+          <div>
+            <div class="clabel">Temperature</div>
+            <div class="cval vt">
+              <span id="temp" class="loading">--</span><span class="cunit" id="t-unit" style="display:none">°C</span>
+            </div>
+          </div>
+          <div class="cicon it">🌡️</div>
+        </div>
+
+        <div class="gauge-wrap">
+          <svg class="gauge-svg" width="200" height="108" viewBox="0 0 200 108">
+            <defs>
+              <linearGradient id="gtemp" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#ff6b00"/>
+                <stop offset="100%" stop-color="#ffcc00"/>
+              </linearGradient>
+            </defs>
+            <path d="M20,100 A80,80 0 0,1 180,100" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="10" stroke-linecap="round"/>
+            <path id="t-arc" d="M20,100 A80,80 0 0,1 180,100" fill="none" stroke="url(#gtemp)" stroke-width="10" stroke-linecap="round" stroke-dasharray="251" stroke-dashoffset="251" style="transition:stroke-dashoffset 1.2s cubic-bezier(.4,0,.2,1);"/>
+            <text x="18"  y="106" text-anchor="middle" fill="rgba(255,255,255,.22)" font-size="10" font-family="Inter">0</text>
+            <text x="182" y="106" text-anchor="middle" fill="rgba(255,255,255,.22)" font-size="10" font-family="Inter">50</text>
+          </svg>
+        </div>
+
+        <div class="meter-row">
+          <div class="meter-track"><div class="meter-fill mft" id="t-bar"></div></div>
+          <div class="meter-pct" id="t-pct">--%</div>
+        </div>
+        <div class="timebar">
+          <span class="timebar-label" id="t-desc">Connecting…</span>
+          <div class="timebar-dots" id="t-dots">
+            <span></span><span></span><span></span><span></span><span></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- HUMIDITY -->
+      <div class="gcard ch">
+        <div class="crow">
+          <div>
+            <div class="clabel">Humidity</div>
+            <div class="cval vh">
+              <span id="hum" class="loading">--</span><span class="cunit" id="h-unit" style="display:none">%</span>
+            </div>
+          </div>
+          <div class="cicon ih">💧</div>
+        </div>
+
+        <div class="spark-wrap">
+          <div class="spark-label-row">
+            <span class="spark-label">History</span>
+            <span class="spark-label" id="h-trend">—</span>
+          </div>
+          <svg class="spark-svg" id="spark-svg" viewBox="0 0 380 60" height="60" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="sparkg" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="rgba(48,209,88,.35)"/>
+                <stop offset="100%" stop-color="rgba(48,209,88,0)"/>
+              </linearGradient>
+            </defs>
+            <path id="spark-area" d="" fill="url(#sparkg)"/>
+            <path id="spark-line" d="" fill="none" stroke="rgba(48,209,88,.7)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+
+        <div class="meter-row">
+          <div class="meter-track"><div class="meter-fill mfh" id="h-bar"></div></div>
+          <div class="meter-pct" id="h-pct">--%</div>
+        </div>
+        <div class="timebar">
+          <span class="timebar-label" id="h-desc">Connecting…</span>
+        </div>
+      </div>
+
+      <!-- PRESSURE -->
+      <div class="gcard cp">
+        <div class="crow">
+          <div>
+            <div class="clabel">Pressure</div>
+            <div class="cval vp">
+              <span id="pressure" class="loading">--</span><span class="cunit" id="p-unit" style="display:none">hPa</span>
+            </div>
+          </div>
+          <div class="cicon ip">🌍</div>
+        </div>
+        <div class="meter-row">
+          <div class="meter-track"><div class="meter-fill mfp" id="p-bar"></div></div>
+          <div class="meter-pct" id="p-pct">--%</div>
+        </div>
+        <div class="timebar">
+          <span class="timebar-label" id="p-desc">Connecting…</span>
+        </div>
+      </div>
+
+      <!-- ALTITUDE -->
+      <div class="gcard ca">
+        <div class="crow">
+          <div>
+            <div class="clabel">Altitude</div>
+            <div class="cval va">
+              <span id="altitude" class="loading">--</span><span class="cunit" id="a-unit" style="display:none">m</span>
+            </div>
+          </div>
+          <div class="cicon ia">⛰️</div>
+        </div>
+        <div class="timebar" style="margin-top:18px;">
+          <span class="timebar-label">Above sea level</span>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <div class="footer">
+    <div class="footer-bar">GreenWatch IoT · ESP32 · Firebase 9.23.0 · GitHub Pages</div>
+  </div>
+
+</div>
+
+<script>
+/* ANIMATED CANVAS BACKGROUND */
+(function(){
+  const c=document.getElementById('bg');
+  const cx=c.getContext('2d');
+  let W,H;
+  const orbs=[
+    {x:.1,y:.1,r:.34,c:'120,60,255',sp:.0003,off:0},
+    {x:.9,y:.12,r:.30,c:'0,160,255',sp:.0004,off:2},
+    {x:.5, y:.9, r:.28,c:'0,210,130',sp:.00035,off:4},
+    {x:.15, y:.85, r:.20,c:'200,50,200',sp:.0005,off:6},
+  ];
+  function resize(){ W=c.width=window.innerWidth; H=c.height=window.innerHeight; }
+  resize(); window.addEventListener('resize',resize);
+  let t=0;
+  function frame(){
+    t+=1;
+    cx.clearRect(0,0,W,H);
+    orbs.forEach(o=>{
+      const ox=W*(o.x+.05*Math.sin(t*o.sp+o.off));
+      const oy=H*(o.y+.04*Math.cos(t*o.sp+o.off+1));
+      const r=Math.min(W,H)*o.r;
+      const g=cx.createRadialGradient(ox,oy,0,ox,oy,r);
+      g.addColorStop(0,`rgba(${o.c},.26)`);
+      g.addColorStop(1,`rgba(${o.c},0)`);
+      cx.fillStyle=g;
+      cx.beginPath(); cx.arc(ox,oy,r,0,Math.PI*2); cx.fill();
+    });
+    requestAnimationFrame(frame);
+  }
+  frame();
+})();
+
+/* ── DATA HISTORY BUFFERS ── */
+const MAX_HIST = 20;
+const hist = { temp: [], hum: [], pres: [] };
+let startTime = Date.now();
+
+function pushTo(key, v){
+  hist[key].push(v);
+  if(hist[key].length > MAX_HIST) hist[key].shift();
+}
+
+/* ── HUMIDITY SPARKLINE ── */
+function drawSparkline(){
+  const humHistory = hist.hum;
+  if(humHistory.length<2) return;
+  const W=380, H=60, pad=4;
+  const mn=Math.min(...humHistory)-5, mx=Math.max(...humHistory)+5;
+  const pts=humHistory.map((v,i)=>{
+    const x=pad+(i/(humHistory.length-1))*(W-pad*2);
+    const y=H-pad-(v-mn)/(mx-mn)*(H-pad*2);
+    return [x,y];
+  });
+  const line=pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
+  const area=line+' L'+pts[pts.length-1][0].toFixed(1)+','+H+' L'+pts[0][0].toFixed(1)+','+H+' Z';
+  document.getElementById('spark-line').setAttribute('d',line);
+  document.getElementById('spark-area').setAttribute('d',area);
+  const last=humHistory[humHistory.length-1];
+  const prev=humHistory[humHistory.length-2];
+  const t=document.getElementById('h-trend');
+  if(last>prev) t.textContent='↑ Rising';
+  else if(last<prev) t.textContent='↓ Falling';
+  else t.textContent='→ Stable';
+}
+
+/* ── COMBINED TREND CHART (temp + hum + pressure) ── */
+function buildSeriesPath(values, W, H, pad, mn, mx){
+  if(values.length<2) return {line:'', area:''};
+  const pts = values.map((v,i)=>{
+    const x = pad + (i/(values.length-1))*(W-pad*2);
+    const y = H - pad - ((v-mn)/(mx-mn))*(H-pad*2);
+    return [x,y];
+  });
+  const line = pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
+  const area = line+' L'+pts[pts.length-1][0].toFixed(1)+','+H+' L'+pts[0][0].toFixed(1)+','+H+' Z';
+  return {line, area};
+}
+
+function drawTrendChart(){
+  const W=860, H=280, pad=20;
+
+  if(hist.temp.length>=2){
+    const mn=Math.min(...hist.temp)-3, mx=Math.max(...hist.temp)+3;
+    const r=buildSeriesPath(hist.temp, W, H, pad, mn, mx);
+    document.getElementById('line-temp').setAttribute('d', r.line);
+    document.getElementById('area-temp').setAttribute('d', r.area);
+  }
+  if(hist.hum.length>=2){
+    const mn=Math.min(...hist.hum)-5, mx=Math.max(...hist.hum)+5;
+    const r=buildSeriesPath(hist.hum, W, H, pad, mn, mx);
+    document.getElementById('line-hum').setAttribute('d', r.line);
+    document.getElementById('area-hum').setAttribute('d', r.area);
+  }
+  if(hist.pres.length>=2){
+    const mn=Math.min(...hist.pres)-2, mx=Math.max(...hist.pres)+2;
+    const r=buildSeriesPath(hist.pres, W, H, pad, mn, mx);
+    document.getElementById('line-pres').setAttribute('d', r.line);
+  }
+
+  const n = Math.max(hist.temp.length, hist.hum.length, hist.pres.length);
+  document.getElementById('chart-foot-left').textContent = n + ' samples tracked';
+}
+
+/* ── RADIAL RANGE GAUGES ── */
+const CIRC = 213.5;
+function updateRadial(id, textId, pct, label){
+  const offset = CIRC - CIRC*Math.min(Math.max(pct,0),1);
+  document.getElementById(id).style.strokeDashoffset = offset;
+  document.getElementById(textId).textContent = label;
+}
+
+function updateArc(pct){
+  const total=251;
+  const offset=total-(total*Math.min(Math.max(pct,0),1));
+  document.getElementById('t-arc').style.strokeDashoffset=offset;
+}
+
+function updateDots(pct){
+  const dots=document.querySelectorAll('#t-dots span');
+  const filled=Math.round(pct*dots.length);
+  dots.forEach((d,i)=>{
+    d.style.background=i<filled?'rgba(255,159,10,.7)':'rgba(255,255,255,.12)';
+    d.style.boxShadow=i<filled?'0 0 6px rgba(255,159,10,.6)':'none';
+  });
+}
+
+function tempDesc(v){
+  if(v<10) return 'Cold conditions';
+  if(v<18) return 'Cool range';
+  if(v<24) return 'Comfortable';
+  if(v<30) return 'Warm conditions';
+  if(v<37) return 'Hot — stay hydrated';
+  return 'Extreme heat warning';
+}
+function humDesc(v){
+  if(v<20) return 'Very dry — low humidity';
+  if(v<40) return 'Dry conditions';
+  if(v<60) return 'Ideal humidity';
+  if(v<75) return 'Moderately humid';
+  return 'High humidity';
+}
+function presDesc(v){
+  if(v<1000) return 'Low pressure system';
+  if(v<1020) return 'Normal pressure';
+  return 'High pressure system';
+}
+
+/* ── UPTIME CLOCK ── */
+setInterval(()=>{
+  const secs = Math.floor((Date.now()-startTime)/1000);
+  const m = Math.floor(secs/60).toString().padStart(2,'0');
+  const s = (secs%60).toString().padStart(2,'0');
+  document.getElementById('sum-uptime').textContent = m+':'+s;
+}, 1000);
+
+/* ── FIREBASE (v9 compat) ── */
+const firebaseConfig = {
+  apiKey: "AIzaSyDcsf6uixmJ0tjK1aVRfw6jEOk23_LcD_Y",
+  authDomain: "enivironmental-monitoring.firebaseapp.com",
+  databaseURL: "https://enivironmental-monitoring-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "enivironmental-monitoring",
+  storageBucket: "enivironmental-monitoring.appspot.com"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+db.ref("/").once("value")
+.then((snapshot) => {
+  console.log("Firebase Connected");
+  console.log(snapshot.val());
+})
+.catch((error) => {
+  console.log("Firebase Error:", error);
+});
+
+db.ref("temperature").on("value",(snap)=>{
+  const v=snap.val();
+  const el=document.getElementById('temp');
+  el.classList.remove('loading'); el.textContent=v;
+  document.getElementById('t-unit').style.display='inline';
+  const pct=Math.min(Math.max(v/50,0),1);
+  document.getElementById('t-bar').style.width=(pct*100).toFixed(1)+'%';
+  document.getElementById('t-pct').textContent=Math.round(pct*100)+'%';
+  document.getElementById('t-desc').textContent=tempDesc(v);
+  updateArc(pct);
+  updateDots(pct);
+
+  document.getElementById('sum-temp').innerHTML = v+'<span style="font-size:12px;opacity:.6;">°C</span>';
+  updateRadial('rad-temp','rad-temp-text', pct, v+'°');
+
+  pushTo('temp', v);
+  drawTrendChart();
+});
+
+db.ref("humidity").on("value",(snap)=>{
+  const v=snap.val();
+  const el=document.getElementById('hum');
+  el.classList.remove('loading'); el.textContent=v;
+  document.getElementById('h-unit').style.display='inline';
+  const pct=Math.min(Math.max(v/100,0),1);
+  document.getElementById('h-bar').style.width=(pct*100).toFixed(1)+'%';
+  document.getElementById('h-pct').textContent=Math.round(pct*100)+'%';
+  document.getElementById('h-desc').textContent=humDesc(v);
+
+  document.getElementById('sum-hum').innerHTML = v+'<span style="font-size:12px;opacity:.6;">%</span>';
+  updateRadial('rad-hum','rad-hum-text', pct, v+'%');
+
+  pushTo('hum', v);
+  drawSparkline();
+  drawTrendChart();
+});
+
+db.ref("pressure").on("value",(snap)=>{
+  const v=snap.val();
+  const el=document.getElementById('pressure');
+  el.classList.remove('loading'); el.textContent=v;
+  document.getElementById('p-unit').style.display='inline';
+  const pct=Math.min(Math.max((v-950)/(1050-950),0),1);
+  document.getElementById('p-bar').style.width=(pct*100).toFixed(1)+'%';
+  document.getElementById('p-pct').textContent=Math.round(pct*100)+'%';
+  document.getElementById('p-desc').textContent=presDesc(v);
+
+  document.getElementById('sum-pres').textContent = v;
+  updateRadial('rad-pres','rad-pres-text', pct, v);
+
+  pushTo('pres', v);
+  drawTrendChart();
+});
+
+db.ref("altitude").on("value",(snap)=>{
+  const v=snap.val();
+  const el=document.getElementById('altitude');
+  el.classList.remove('loading'); el.textContent=v;
+  document.getElementById('a-unit').style.display='inline';
+  document.getElementById('sum-alt').textContent = v;
+});
+
+db.ref("objectDetected").on("value",(snap)=>{
+  const det=snap.val();
+  const state=document.getElementById('ir-state');
+  const lbl=document.getElementById('ir');
+  const sub=document.getElementById('ir-sub');
+  lbl.classList.remove('loading');
+  if(det){
+    state.className='center-state ir-detected';
+    lbl.textContent='Detected';
+    sub.textContent='Object within sensor range';
+  } else {
+    state.className='center-state ir-clear';
+    lbl.textContent='Not Detected';
+    sub.textContent='No object in range';
+  }
+});
+
+db.ref("airQuality").on("value",(snap)=>{
+  const aq=snap.val();
+  const el=document.getElementById('aq');
+  el.classList.remove('loading'); el.textContent=aq;
+  document.getElementById('sum-aq').textContent = aq;
+  const state=document.getElementById('aq-state');
+  const text=document.getElementById('aq-status-text');
+  const sub=document.getElementById('aq-sub');
+  const sumSub=document.getElementById('sum-aq-sub');
+
+  if(aq>400){
+    state.className='center-state aq-poor';
+    text.textContent='Poor';
+    sub.textContent='Air quality is poor';
+    sumSub.textContent='poor';
+  } else if(aq>200){
+    state.className='center-state aq-medium';
+    text.textContent='Moderate';
+    sub.textContent='Air quality is moderate';
+    sumSub.textContent='moderate';
+  } else {
+    state.className='center-state aq-good';
+    text.textContent='Good';
+    sub.textContent='Air quality is good';
+    sumSub.textContent='good';
+  }
+});
+</script>
+</body>
+</html>
